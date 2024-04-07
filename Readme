@@ -1,0 +1,10 @@
+To set up and run the backend, follow these steps:
+
+Install dependencies:
+npm install
+Run the backend server:
+npm start
+
+Make sure to include your credentials by adding them to the .env file.
+
+

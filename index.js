@@ -4,6 +4,8 @@ const connectToDatabase = require("./config/db");
 const authRouter = require("./routes/authRoute");
 const addressRouter = require("./routes/addressRoute");
 const confirmPickupRouter = require("./routes/confirmPickupRoute");
+const subscriptionRouter = require("./routes/subscriptionRoute");
+const promocode = require("./routes/promocodeRoute");
 const app = express();
 const cors = require("cors");
 app.use(cors()); // REMOVE LATER THE ORIGIN *
@@ -15,6 +17,7 @@ app.use(express.json());
 app.use("/api", authRouter);
 app.use("/api/address", addressRouter);
 app.use("/api/confirm-pickup", confirmPickupRouter);
+app.use("/api/promocode", promocode);
 app.use("/",(req,res)=>{
   res.status(200).json({msg:"success",server:"Running..."});
 })

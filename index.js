@@ -6,6 +6,7 @@ const addressRouter = require("./routes/addressRoute");
 const confirmPickupRouter = require("./routes/confirmPickupRoute");
 const subscriptionRouter = require("./routes/subscriptionRoute");
 const promocode = require("./routes/promocodeRoute");
+const confirmPickupRouter = require("./routes/confirmPickupRoute");
 const app = express();
 const cors = require("cors");
 app.use(cors()); // REMOVE LATER THE ORIGIN *

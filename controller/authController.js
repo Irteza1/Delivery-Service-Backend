@@ -1,14 +1,59 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const User = require("../models/user");
-const BASE_URL = process.env.BASE_URL ?? "http://localhost:4200";
+const mailer = require("./mailController");
+const { Address } = require("../models/returnProcessSchema");
+
+const BASE_URL = process.env.BASE_URL ?? "https://returnpal.ca";
 const JWT_SECRET = process.env.JWT_SECRET ?? "PLEASE SET JWT SECRET KEY";
+
 async function findExistingUser(email) {
     const escapedEmail = email.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
     return User.findOne({
         email: { $regex: `^${escapedEmail}$`, $options: "i" },
     });
 }
+
+async function updateUser(email, update) {
+    const escapedEmail = email.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+    return User.updateOne(
+        { email: { $regex: `^${escapedEmail}$`, $options: "i" } },
+        update
+    );
+}
+
+exports.users = async (req, res) => {
+    try {
+        const users = await User.find();
+        return res.status(200).json({ users });
+    } catch (err) { }
+};
+
+exports.userById = async (req, res) => {
+    const { id } = req.params;
+    if (!id) {
+        return res
+            .status(401)
+            .json({ error: "Id was not provided for a user" });
+    }
+
+    try {
+        const user = await User.findOne({ _id: id });
+        for (const addressId of user.addresses) {
+            const address = await Address.findOne({ _id: addressId, isPrimary: true });
+            if (address) {
+                return res.status(200).json({ user, address });
+            }
+        }
+        console.log(user)
+        return res.status(200).json({ user });
+    } catch (err) {
+        console.error(err);
+    }
+};
+
 exports.register = async (req, res) => {
     try {
         const {
@@ -26,6 +71,7 @@ exports.register = async (req, res) => {
         if (existingUser) {
             return res.status(409).json({ error: "User already exists" });
         }
+
         const hashedPassword = await bcrypt.hash(password, 10);
         const user = new User({
             username: email, // User seems to need a username to save to the db properly. Should remove later if not using a username.
@@ -51,6 +97,14 @@ exports.register = async (req, res) => {
 
         user.addresses.push(primaryAddress._id);
         await user.save();
+
+        const subject = "ReturnPal - Verify your email";
+        const link = `${BASE_URL}/verify?token=${user._id}`;
+        const body =
+            "Hello,<br> Please click on the link to verify your email.<br> <a href=" +
+            link +
+            ">Click here to verify</a>";
+        await mailer.sendMail(email, subject, body);
         return res
             .status(201)
             .json({ message: "User registered successfully", user });
@@ -113,7 +167,7 @@ exports.forgotPassword = async (req, res) => {
         await updateUser(email, { passwordResetToken: token });
 
         const link = `${BASE_URL}/reset?token=${token}`;
-        const subject = "Backend - Reset your password";
+        const subject = "ReturnPal - Reset your password";
         const body =
             "Hello,<br> Please follow the link to reset your password.<br> <a href=" +
             link +
@@ -156,5 +210,101 @@ exports.resetPassword = async (req, res) => {
         return res.status(200).json({ message: "Password reset successfully" });
     } catch (error) {
         return res.status(500).json({ error: "Server error" });
+    }
+};
+
+exports.authorize = async (req, res) => {
+    try {
+        const { userId, token } = req.body;
+
+        const verifiedToken = jwt.verify(token, JWT_SECRET);
+
+        if (verifiedToken && verifiedToken.userId === userId) {
+            return res.status(200);
+        }
+
+        return res.status(401).json({ message: "Unauthorized" });
+    } catch (err) {
+        return res.status(500).json({ error: "Authentication Error" });
+    }
+};
+
+
+exports.updateUser = async (req, res) => {
+    try {
+        let {
+            firstName,
+            lastName,
+            email,
+            phoneNumber,
+            address,
+            password,
+        } = req.body;
+        const id = req.params.id
+        if (!id) {
+            return res
+                .status(401)
+                .json({ error: "Id was not provided for a user" });
+        }
+        const user = await User.findOne({ _id: id });
+        user.firstName = firstName;
+        user.lastName = lastName;
+        user.email = email;
+        user.password = password;
+        await user.save();
+        await Address.findOneAndUpdate(
+            { user: id, isPrimary: true }, // Filter criteria
+            {
+                $set: {
+                    phoneNumber: phoneNumber,
+                    address: address
+                }
+            }, // Update operation
+            { new: true } // Optional parameter to return the updated document
+        );
+        const addressDetails = await Address.findOne({ user: id, isPrimary: true });
+        return res
+            .status(200)
+            .json({
+                message: "User saved successfully",
+                data: {
+                    user: user,
+                    addressDetails: addressDetails
+                }
+            });
+    } catch (error) {
+        return res.status(500).json({ error: error.message });
+    }
+};
+
+exports.googleLogin = async (req, res) => {
+    try {
+        const {
+            displayName,
+            photos,
+            provider,
+            emails,
+            name
+        } = req.user.profile;
+        const existingUser = await findExistingUser(emails[0]?.value);
+        if (existingUser) {
+            const token = jwt.sign({ userId: existingUser._id }, JWT_SECRET);
+            return { status: true, user: existingUser, token };
+        }
+        const user = new User({
+            username: emails[0]?.value,
+            profilePic: photos[0]?.value,
+            provider,
+            email: emails[0]?.value,
+            firstName: name?.familyName,
+            lastName: name?.givenName,
+            isActive:true
+        });
+        await user.save();
+        const token = jwt.sign({ userId: user._id }, JWT_SECRET);
+        return { status: false, user, token };
+    } catch (error) {
+        console.log(error, ' error in google login save');
+        return { status: true, error };
     }
 };

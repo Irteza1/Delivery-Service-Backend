@@ -25,7 +25,7 @@ const port = process.env.PORT || 3000;
 connectToDatabase();
 
 app.use(session({
-    secret: 'c24e45cb63310811e8cabc4026919dc39f0bdd65f18af20fdf477782ba4c195f',
+    secret: '',
     resave: false,
     saveUninitialized: true
   }));
